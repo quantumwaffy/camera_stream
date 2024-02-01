@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "camera-stream"
+version = "0.1.0"
+description = "Camera Stream"
+authors = ["quantumwaffy <sashchystyh@yandex.ru>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+opencv-python = "^4.9.0.80"
+mediapipe = "^0.10.9"
+
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.6.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
