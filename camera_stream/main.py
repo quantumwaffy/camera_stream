@@ -3,6 +3,7 @@ import cv2
 import data_structures as structs
 import mediapipe as mp
 import numpy
+from mqtt_utils import client, publishers
 
 handsModule = mp.solutions.hands
 mpDraw = mp.solutions.drawing_utils
@@ -40,6 +41,7 @@ class Detector:
         self._correction_zone: structs.Rectangle = self._get_zone(correction_style_config, 2)
         self._confirmation_zone: structs.Rectangle = self._get_zone(confirmation_style_config, 1)
         self._current_zone: consts.ZoneTopicType | None = None
+        self._mqtt_publisher: publishers.BasePublisher = publishers.BasePublisher(client.Client().instance)
 
     def _get_zone(self, style: structs.Style, multiplier: int) -> structs.Rectangle:
         sector_y: int = self._frame_height // 3
@@ -69,11 +71,17 @@ class Detector:
                 cv2.circle(img, (cx, cy), 3, (255, 0, 255), cv2.FILLED)
             mpDraw.draw_landmarks(img, hand_landmarks, handsModule.HAND_CONNECTIONS)
 
-    def _send_msg(self, detected_zone: consts.ZoneTopicType) -> None:
-        if self._current_zone is detected_zone:
+    def _send_msgs(self, detected_zone: consts.ZoneTopicType) -> None:
+        if self._current_zone is None:
+            self._current_zone = detected_zone
+            self._mqtt_publisher.send(detected_zone.value, consts.StateZoneType.ON.value)
             return None
+        elif self._current_zone is detected_zone:
+            return None
+
+        self._mqtt_publisher.send(self._current_zone.value, consts.StateZoneType.OFF.value)
+        self._mqtt_publisher.send(detected_zone.value, consts.StateZoneType.ON.value)
         self._current_zone = detected_zone
-        print(self._current_zone.value)
 
     def run(self) -> None:
         while True:
@@ -84,14 +92,18 @@ class Detector:
                     index_tip = landmarks[0].landmark[handsModule.HandLandmark.INDEX_FINGER_TIP]
                     index_tip_y: float = index_tip.y * 1000
                     if self._activation_zone.start.y <= index_tip_y <= self._activation_zone.end.y:
-                        self._send_msg(consts.ZoneTopicType.ACTIVATION)
+                        self._send_msgs(consts.ZoneTopicType.ACTIVATION)
                     elif self._correction_zone.start.y <= index_tip_y <= self._correction_zone.end.y:
-                        self._send_msg(consts.ZoneTopicType.CORRECTION)
+                        self._send_msgs(consts.ZoneTopicType.CORRECTION)
                     elif self._confirmation_zone.start.y <= index_tip_y <= self._confirmation_zone.end.y:
-                        self._send_msg(consts.ZoneTopicType.CONFIRMATION)
+                        self._send_msgs(consts.ZoneTopicType.CONFIRMATION)
                     else:
                         print("Not found")
                 self._draw_hands(img, landmarks)
+            elif self._current_zone:
+                self._mqtt_publisher.send(self._current_zone.value, consts.StateZoneType.OFF.value)
+                self._current_zone = None
+
             cv2.imshow("Image", img)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
